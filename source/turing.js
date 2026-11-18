@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
+const VERSION = '0.2.0';
 const HOME = path.join(os.homedir(), '.waydev');
 const SELF = path.join(HOME, 'turing.js');
 const STATE = path.join(HOME, 'turing');
@@ -1356,10 +1357,18 @@ function onPath(bin) {
 
 const detectedAgents = () => Object.keys(AGENTS).filter(k => fs.existsSync(AGENTS[k].dir()) || onPath(AGENTS[k].bin));
 
-function installSelf() {
+const versionOf = file => (readOr(file, '').match(/^const VERSION = '([^']+)'/m) || [])[1] || '0';
+const newer = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+
+// Hooks run the copy in ~/.waydev, so a newer turing (npm, brew, a new zip) replaces it; an older one never does.
+function installSelf(onlyIfInstalled) {
   if (real(__filename) === real(SELF)) return;
+  if (fs.existsSync(SELF) ? newer(versionOf(SELF), VERSION) : onlyIfInstalled) return;
+  if (fs.existsSync(SELF) && readOr(SELF, '') === readOr(__filename, '')) return;
+  const was = fs.existsSync(SELF) ? versionOf(SELF) : null;
   fs.mkdirSync(HOME, { recursive: true });
   fs.copyFileSync(__filename, SELF);
+  if (was) console.log(`  ✓ updated ${SELF} (${was} → ${VERSION})`);
 }
 
 // ── status ──────────────────────────────────────────────────────────────────
@@ -1623,9 +1632,134 @@ function diagnose(dir) {
   if (fails) process.exitCode = 1;
 }
 
+// ── install / uninstall (interactive; same flow as install.sh / install.ps1) ─
+
+const DEFAULT_OTEL_URL = 'https://api-ai.waydev.co';
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+// One readline for the whole run, so piped answers (one per line) aren't lost between questions.
+function asker() {
+  const readline = require('readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: !!process.stdin.isTTY });
+  const lines = [], waiting = [];
+  let closed = false, muted = false;
+  rl._writeToOutput = t => { if (!muted) rl.output.write(t); };
+  rl.on('line', l => { const w = waiting.shift(); if (w) w(l); else lines.push(l); });
+  rl.on('close', () => { closed = true; while (waiting.length) waiting.shift()(null); });
+  rl.on('SIGINT', () => { process.stdout.write('\n'); process.exit(130); });
+  const ask = (q, hidden) => new Promise(resolve => {
+    process.stdout.write(q);
+    muted = !!hidden && rl.terminal;
+    const done = a => {
+      if (muted) process.stdout.write('\n');
+      muted = false;
+      if (!rl.terminal) process.stdout.write('\n');
+      resolve(a == null ? null : a.trim());
+    };
+    if (lines.length) done(lines.shift()); else if (closed) done(null); else waiting.push(done);
+  });
+  return { ask, close: () => rl.close() };
+}
+
+function installArgs(args) {
+  const o = { dir: process.cwd(), agents: null, otel: true, yes: false };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--agents') o.agents = args[++i] || '';
+    else if (a.startsWith('--agents=')) o.agents = a.slice(9);
+    else if (a === '--no-otel') o.otel = false;
+    else if (a === '-y' || a === '--yes') o.yes = true;
+    else if (a.startsWith('-')) throw new Error(`unknown option: ${a}`);
+    else o.dir = path.resolve(a);
+  }
+  return o;
+}
+
+async function install(args) {
+  const o = installArgs(args);
+  for (const c of ['git']) if (!onPath(c)) throw new Error(`${c} is required but not on PATH`);
+  const agents = o.agents != null ? o.agents.split(',').map(a => a.trim()).filter(Boolean) : detectedAgents();
+  const unknown = agents.filter(a => !AGENTS[a]);
+  if (unknown.length) throw new Error(`unknown agent: ${unknown.join(', ')} (use ${Object.keys(AGENTS).join(', ')})`);
+  if (!agents.length) throw new Error('no supported AI agent found; pass --agents to choose');
+  console.log(`Agents: ${agents.join(', ')}`);
+
+  console.log(`Repositories under ${o.dir}:`);
+  const repos = reposUnder(o.dir);
+  if (!repos.length) { console.log('  none found'); process.exitCode = 1; return; }
+  for (const r of repos) console.log(`  ${r}`);
+
+  const entireRepos = repos.filter(hasEntire);
+  let entire = null;
+  const { ask, close } = asker();
+  try {
+    if (entireRepos.length) {
+      console.log('\nEntire is set up in:');
+      for (const r of entireRepos) console.log(`  ${r}`);
+      console.log('Both tools write a WD: trailer. Removing Entire runs its uninstall (its .entire/ folder, session data and shadow');
+      console.log("branches go too) and removes install-wd's wd_commit_hook. Keeping it puts turing in compare mode (WD-Turing: trailer).");
+      entire = o.yes ? 'keep' : /^y/i.test((await ask('Remove Entire from these repos? [y/N] ')) || '') ? 'remove' : 'keep';
+    }
+
+    const otel = o.otel && (agents.includes('claude') || agents.includes('opencode'));
+    if (otel) {
+      console.log('\nOTel telemetry sends usage, tokens and cost to Waydev (skip with --no-otel).');
+      if (!process.env.TURING_OTEL_URL) process.env.TURING_OTEL_URL = (o.yes ? '' : await ask(`Ingest URL [${DEFAULT_OTEL_URL}]: `)) || DEFAULT_OTEL_URL;
+      for (const [k, label, env] of [['claude', 'Claude Code', 'TURING_CLAUDE_TOKEN'], ['opencode', 'OpenCode', 'TURING_OPENCODE_TOKEN']]) {
+        if (!agents.includes(k)) continue;
+        while (!process.env[env]) {
+          const t = o.yes ? null : await ask(`${label} ingest token: `, true);
+          if (t == null) throw new Error(`no ${label} token: set ${env}, or pass --no-otel`);
+          if (t) process.env[env] = t;
+        }
+      }
+      if (!process.env.TURING_EMAIL) {
+        const gitEmail = (git(['config', '--global', 'user.email']) || '').trim();
+        const q = gitEmail ? `Email for OTel (Enter = each repo's git user.email, e.g. ${gitEmail}): ` : 'Email for OTel: ';
+        for (;;) {
+          const e = o.yes ? '' : await ask(q);
+          if (e == null || (!e && !gitEmail && o.yes)) throw new Error('no email: set TURING_EMAIL or a global git user.email');
+          if (!e && gitEmail) break;
+          if (EMAIL_RE.test(e)) { process.env.TURING_EMAIL = e; break; }
+        }
+      }
+    } else {
+      delete process.env.TURING_CLAUDE_TOKEN;
+      delete process.env.TURING_OPENCODE_TOKEN;
+    }
+
+    if (!o.yes) {
+      const reply = await ask(`\nInstall turing${otel ? ' with OTel' : ''} in these repos? [Y/n] `);
+      if (reply == null || /^n/i.test(reply)) { console.log('Aborted.'); return; }
+    }
+  } finally { close(); }
+
+  installSelf();
+  for (const k of agents) AGENTS[k].setup(true);
+  if (entire === 'remove') { console.log('Removing Entire:'); for (const r of entireRepos) removeEntire(r); }
+  for (const r of repos) enable(r, entire && entireRepos.includes(r) ? entire === 'keep' : null);
+  console.log(`Done. Check the install with: turing diagnose "${o.dir}"`);
+}
+
+function uninstall(args) {
+  const dir = path.resolve(args.find(a => !a.startsWith('-')) || process.cwd());
+  if (!fs.existsSync(SELF)) return console.log('turing is not installed.');
+  console.log(`Removing git hooks and OTel settings from repos under ${dir}:`);
+  for (const r of reposUnder(dir)) disable(r);
+  for (const k of Object.keys(AGENTS)) AGENTS[k].setup(false);
+  fs.rmSync(STATE, { recursive: true, force: true });
+  fs.rmSync(SELF, { force: true });
+  console.log('Done.');
+}
+
 // ── main ────────────────────────────────────────────────────────────────────
 
-const USAGE = `turing — AI line attribution for git commits (writes the WD: trailer)
+const USAGE = `turing ${VERSION} — AI line attribution for git commits (writes the WD: trailer)
+
+  turing install [dir] [--agents claude,cursor,…] [--no-otel] [-y]
+                                         interactive install: agent hooks, git hooks in every repo under dir, OTel
+  turing uninstall [dir]                 remove everything turing installed (git hooks under dir, agent hooks, OTel)
+  turing --version
 
   turing setup [--claude] [--opencode] [--cursor] [--gemini] [--copilot] [--droid] [--codex]
                                          install agent hooks globally (default: every agent found)
@@ -1648,7 +1782,11 @@ function stdinJSON() {
 function main(argv) {
   const [cmd, ...args] = argv;
   const dirArg = () => args.find(a => !a.startsWith('-')) || process.cwd();
+  if (!AGENT_CMDS.has(cmd)) installSelf(true);
   switch (cmd) {
+    case 'install': return install(args);
+    case 'uninstall': return uninstall(args);
+    case '--version': case '-v': case 'version': return console.log(VERSION);
     case 'claude': return onClaude(stdinJSON());
     case 'opencode': return onOpenCode(stdinJSON());
     case 'opencode-tokens': return onOpenCodeTokens(stdinJSON());
@@ -1705,7 +1843,8 @@ function main(argv) {
 const AGENT_CMDS = new Set(['claude', 'opencode', 'opencode-tokens', 'hook', 'cursor', 'gemini', 'copilot-cli', 'factoryai-droid', 'codex']);
 const cmd = process.argv[2];
 try {
-  main(process.argv.slice(2));
+  const run = main(process.argv.slice(2));
+  if (run && run.catch) run.catch(e => { console.error(`turing: ${e.message}`); process.exit(1); });
   if (cmd === 'gemini') process.stdout.write('{}');
 } catch (e) {
   if (cmd === 'gemini') process.stdout.write('{}');

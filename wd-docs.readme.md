@@ -9,7 +9,7 @@ Turing replaces the Entire CLI used by the [Waydev Git-Hooks & AI Telemetry Inst
 <Callout icon="📘" theme="info">
   ### Open source
 
-  **Turing is a single Node.js file (**`turing.js`**) with no dependencies, plus two small installer scripts.** The source is public in the <Anchor target="_blank" href="https://github.com/waydevinc/turing">**waydevinc/turing**</Anchor> repository and can be reviewed in full before installation; any modifications are made at your own risk. The archive also includes the complete technical documentation: <Anchor target="_blank" href="https://github.com/waydevinc/turing/raw/master/releases/latest.zip">**📦 Download Turing**</Anchor>.
+  **Turing is a single Node.js file (**`turing.js`**) with no dependencies, plus two small installer scripts.** The source is public in the <Anchor target="_blank" href="https://github.com/waydevinc/turing">**waydevinc/turing**</Anchor> GitHub repository and can be reviewed in full before installation; any modifications are made at your own risk. The archive also includes the complete technical documentation: <Anchor target="_blank" href="https://github.com/waydevinc/turing/raw/master/releases/latest.zip">**📦 Download Turing**</Anchor>.
 </Callout>
 
 ## Why Turing?
@@ -48,15 +48,28 @@ Notes:
 * `git`
 * Node.js 18 or later
 
-Installer for each system:
+Install with npm on any system (recommended), or with the scripts in the release archive:
 
 * **macOS, Linux:** `install.sh`
 * **Windows:** `install.ps1` (PowerShell) or `install.sh` (Git Bash)
-* **WSL:** `install.sh`, run inside WSL
+* **WSL:** `install.sh` or npm, run inside WSL
 
 ### Run the installer
 
-Download the <Anchor target="_blank" href="https://github.com/waydevinc/turing/raw/master/releases/latest.zip">latest release</Anchor> (or a specific version from <Anchor target="_blank" href="https://github.com/waydevinc/turing/releases">GitHub Releases</Anchor>), unzip it, and run the installer from the folder that contains your repositories. It finds every Git repository in that folder and up to 6 levels below it, and skips dependency and build folders (`node_modules`, `vendor`, `dist`, `build`, …).
+The installer finds every Git repository in the folder you give it and up to 6 levels below it, and skips dependency and build folders (`node_modules`, `vendor`, `dist`, `build`, …).
+
+**With npm (any system):**
+
+```bash
+npx @waydev/turing install ~/code                        # run once, nothing left installed globally
+npm install -g @waydev/turing && turing install ~/code   # or keep the turing command
+turing install ~/code --agents claude,cursor --no-otel   # only these agents, no telemetry
+turing install ~/code -y                                 # no prompts: defaults, tokens from the environment
+```
+
+To update, run `npm update -g @waydev/turing`. The next `turing` command updates the copy the hooks use (`~/.waydev/turing.js`). An older version never replaces a newer one, and `turing --version` shows the installed version.
+
+**With the release archive:** download the <Anchor target="_blank" href="https://github.com/waydevinc/turing/raw/master/releases/latest.zip">latest release</Anchor> (or a specific version from <Anchor target="_blank" href="https://github.com/waydevinc/turing/releases">GitHub Releases</Anchor>), unzip it, and run the installer from the folder that contains your repositories.
 
 **macOS, Linux, Git Bash, WSL:**
 
@@ -188,7 +201,12 @@ Telemetry, if enabled, is sent separately by Claude Code and OpenCode to the ing
 ## Uninstall
 
 ```bash
-./install.sh --uninstall ~/code
+turing uninstall ~/code              # installed with npm
+npm uninstall -g @waydev/turing
+```
+
+```bash
+./install.sh --uninstall ~/code      # installed from the archive
 ```
 
 ```powershell

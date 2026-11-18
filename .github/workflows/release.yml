@@ -1,0 +1,53 @@
+# Push a tag vX.Y.Z (matching package.json and VERSION in source/turing.js) to publish @waydev/turing to npm
+# and create a GitHub Release with turing.zip. npm auth uses trusted publishing (OIDC), so there's no npm token here;
+# set it up once on npmjs.com: @waydev/turing → Settings → Trusted Publisher → GitHub Actions, waydevinc/turing, release.yml.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@latest
+
+      - name: Check versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          src="$(sed -n "s/^const VERSION = '\(.*\)';$/\1/p" source/turing.js)"
+          echo "tag=$tag package.json=$pkg turing.js=$src"
+          [ "$tag" = "$pkg" ] && [ "$tag" = "$src" ] || { echo "::error::tag, package.json and turing.js VERSION must match"; exit 1; }
+          node --check source/turing.js
+          echo "VERSION=$tag" >> "$GITHUB_ENV"
+
+      - name: Build zip
+        run: |
+          mkdir -p dist/turing
+          cp README.md source/turing.js source/install.sh source/install.ps1 dist/turing/
+          chmod +x dist/turing/install.sh dist/turing/turing.js
+          cd dist
+          zip -q -X turing.zip turing/README.md turing/turing.js turing/install.sh turing/install.ps1
+          cp turing.zip "turing-$VERSION.zip"
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/turing.zip "dist/turing-$VERSION.zip" --title "$GITHUB_REF_NAME" --generate-notes

@@ -1,0 +1,41 @@
+{
+  "name": "@waydev/turing",
+  "version": "0.2.0",
+  "description": "AI vs human line attribution for git commits: writes the WD: trailer that Waydev reads, and sets up Claude Code / OpenCode telemetry",
+  "keywords": [
+    "waydev",
+    "ai",
+    "attribution",
+    "git",
+    "hooks",
+    "claude-code",
+    "opencode",
+    "cursor",
+    "codex",
+    "telemetry"
+  ],
+  "homepage": "https://docs.waydev.co/docs/turing",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/waydevinc/turing.git"
+  },
+  "bugs": "https://github.com/waydevinc/turing/issues",
+  "license": "UNLICENSED",
+  "bin": {
+    "turing": "source/turing.js"
+  },
+  "files": [
+    "source/turing.js",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prepublishOnly": "node -e \"const v=require('./package.json').version,m=require('fs').readFileSync('source/turing.js','utf8').match(/^const VERSION = '([^']+)'/m);if(!m||m[1]!==v){console.error('package.json version '+v+' != turing.js VERSION '+(m&&m[1]));process.exit(1)}\"",
+    "version": "node -e \"const fs=require('fs'),v=require('./package.json').version,f='source/turing.js';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/^const VERSION = '[^']*';$/m,\\\"const VERSION = '\\\"+v+\\\"';\\\"))\" && git add source/turing.js"
+  }
+}

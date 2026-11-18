@@ -31,9 +31,20 @@ The installer also sets up **OTel telemetry** for Claude Code and OpenCode, whic
 
 ## Install
 
-Run the installer from a folder that contains your repositories. It looks for git repositories in that folder and up to 6 levels below it, and skips `node_modules`, `vendor`, `dist`, `build`, `target`, `Pods` and hidden folders.
+The installer looks for git repositories in the folder you give it (default: the current folder) and up to 6 levels below it, and skips `node_modules`, `vendor`, `dist`, `build`, `target`, `Pods` and hidden folders.
 
-macOS, Linux, or Git Bash on Windows:
+With npm (any OS):
+
+```bash
+npx @waydev/turing install ~/code                       # one-off, nothing left installed globally
+npm install -g @waydev/turing && turing install ~/code  # or keep the turing command
+turing install ~/code --agents claude,cursor --no-otel  # same options as the scripts below
+turing install ~/code -y                                # no prompts: keep Entire, defaults, tokens from the environment
+```
+
+`turing install` asks the same questions as the scripts below. To update, run `npm update -g @waydev/turing` (or `npx @waydev/turing@latest …`): the next `turing` command replaces the copy the hooks run, `~/.waydev/turing.js`, with the newer version. An older version never replaces a newer one. `turing --version` prints the version.
+
+From the zip, macOS, Linux, or Git Bash on Windows:
 
 ```bash
 ./install.sh                        # every agent found, repos under the current folder
@@ -116,7 +127,9 @@ Our lines go at the top of each hook file, between `# >>> turing >>>` and `# <<<
 ## Uninstall
 
 ```bash
-./install.sh --uninstall [dir]
+turing uninstall [dir]                 # npm install
+npm uninstall -g @waydev/turing
+./install.sh --uninstall [dir]         # zip install
 ```
 
 ```powershell
