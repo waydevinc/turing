@@ -287,7 +287,7 @@ The hooks look for `node` at the path recorded during install and fall back to w
 ## Limitations
 
 - **What counts as an agent line.** Lines are matched by their content with surrounding whitespace ignored. If a person types a line identical to one an agent added and hasn't committed yet, it counts as AI.
-- **"Human modified" is an estimate.** It's the number of agent lines that disappeared, capped at the number of human-added lines in the same file.
+- **"Human modified" pairs removed agent lines with new human lines in the same file by count, not by position.** It's the number of agent lines that disappeared, capped at the number of human-added lines in the same file.
 - **`git commit -C HEAD`** (reusing HEAD's message for a new commit) is treated as an amend, because git reports it to the hooks the same way.
 - **Shell commands:**
   - A file that a person edits while an agent's command is running counts as AI: git can't tell who changed a file in that window. `TURING_SHELL_MAX_SEC` limits the window, at the cost of dropping edits from commands that waited long for approval.
