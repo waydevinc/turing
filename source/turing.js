@@ -8,7 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 const HOME = path.join(os.homedir(), '.waydev');
 const SELF = path.join(HOME, 'turing.js');
 const STATE = path.join(HOME, 'turing');

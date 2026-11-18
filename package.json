@@ -1,6 +1,6 @@
 {
   "name": "@waydev/turing",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AI vs human line attribution for git commits: writes the WD: trailer that Waydev reads, and sets up Claude Code / OpenCode telemetry",
   "keywords": [
     "waydev",
